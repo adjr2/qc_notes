@@ -257,3 +257,141 @@ $$
 H\ket{0} = \ket{+} \quad H\ket{1} = \ket{-} \\
 H\ket{+} = \ket{0} \quad H\ket{-} = \ket{1}
 $$
+
+- The Ry gate is a single-qubit rotation through angle $\theta$ (radians) around the y-axis.
+
+### Grover's search algorithm
+#### Search problems
+- A lot of the problems that computers solve are types of _search problems_. The process of providing an input and reading the output _querying the database_.
+- Searching is easy when the data is sorted (or data has some form of structure). Therefore, a lot of work goes into _indexing_ the database to improve search times.
+- Grover's algorithm grows with the _square root_ of the numbe of inputs, which for unstructured search is a quadratic improvement over the best classical algorithm (which is random guessing, which is linear). 
+
+#### Beyond black boxes
+- The idea is to make the problem look like a database search problem, then we can use a search algorithm to solve it. Why? because it is easy to check whether solve is correct then to come up with a solution.
+
+#### SAT problems
+
+- A solution to a [SAT problems](https://en.wikipedia.org/wiki/Boolean_satisfiability_problem) is a string of bits, which makes it easy to map to a quantum circuit. The problem itself is essentially a bunch of conditions (we call them clauses) that rule out different combinations of bit values. ([Read](https://learn.qiskit.org/course/introduction/grovers-search-algorithm#grovers-3-13) to know more about representing SAT problems, just for curiosity.)
+
+```python
+with open('examples/3sat.dimacs', 'r', encoding='utf8') as f:
+    dimacs = f.read()
+print(dimacs)  # let's check the file is as promised
+
+from qiskit.circuit.library import PhaseOracle
+oracle = PhaseOracle.from_dimacs_file('examples/3sat.dimacs')
+oracle.draw()
+```
+
+- This circuit above acts similarly to the databases we described before. The input to this circuit is a string of 3 bits, and the output given depends on whether the input string is a solution to the SAT problem or not.
+- The result of this checking computation will be either True or False, but the behaviour of this circuit is slightly different to how you might expect. To use this circuit with Grover's algorithm, we want the oracle to change the phase of the output state by 180° (i.e. multiply by -1) if the state is a solution. This is why Qiskit calls the class 'PhaseOracle'.
+$$
+U_{oracle}\ket{x} = 
+      \begin{cases}
+      \ket{x}, & \text{if x is not a solution} \\
+      -\ket{x}, & \text{if x is a solution}
+    \end{cases}
+$$
+
+- To summarise:
+
+  1. There are problems for which it's easy to check if a proposed solution is correct.
+  2. We can convert an algorithm that checks solutions into a quantum circuit that changes the phase of solution states
+  3. We can then use Grover's algorithm to work out which states have their phases changed.
+- In this sense, **the database or oracle is the problem to be solved**.
+
+#### Overview of Grover's algorithm
+- Grover’s algorithm has three steps:
+  1. The first step is to create an equal superposition of every possible input to the oracle. If our qubits all start in the state $\ket{0}$, we can create this superposition by applying a H-gate to each qubit. We’ll call this equal superposition state $\ket{s}$.
+
+  2. The next step is to run the oracle circuit ($U_{oracle}$) on these qubits. Here, we'll use the circuit (oracle) Qiskit created above, but we could use any circuit or hardware that changes the phases of solution states.
+
+  3. The final step is to run a circuit called the 'diffusion operator' or 'diffuser' ($U_s$) on the qubits. We'll go over this circuit when we explore Grover's algorithm in the next section, but it's a remarkably simple circuit that is the same for any oracle.
+
+- We then need to repeat steps 2 & 3 a few times depending on the size of the circuit. Note that we query the oracle in step #2, so the number of queries is roughly proportional to the square root of the number of possible inputs. If we repeat 2 & 3 the right amount of times, then when we measure, we'll have a high chance of measuring a solution to the oracle.
+
+```python
+from qiskit import QuantumCircuit
+init = QuantumCircuit(3)
+init.h([0,1,2])
+init.draw()
+
+# steps 2 & 3 of Grover's algorithm
+from qiskit.circuit.library import GroverOperator
+grover_operator = GroverOperator(oracle) #oracle is defined above
+
+qc = init.compose(grover_operator)
+qc.measure_all()
+qc.draw()
+
+# Simulate the circuit
+from qiskit import Aer, transpile
+sim = Aer.get_backend('aer_simulator')
+t_qc = transpile(qc, sim)
+counts = sim.run(t_qc).result().get_counts()
+
+# plot the results
+from qiskit.visualization import plot_histogram
+plot_histogram(counts)
+```
+
+#### How does Grover's algorithm work?
+- Read the [documentation](https://learn.qiskit.org/course/introduction/grovers-search-algorithm#grovers-19-0)
+
+#### Circuits for Grover's algorithm
+
+```python
+from qiskit import QuantumCircuit
+
+# The oracle
+oracle = QuantumCircuit(2)
+oracle.cz(0,1)  # invert phase of |11>
+oracle.draw()
+
+def display_unitary(qc, prefix=""):
+    """Simulates a simple circuit and display its matrix representation.
+    Args:
+        qc (QuantumCircuit): The circuit to compile to a unitary matrix
+        prefix (str): Optional LaTeX to be displayed before the matrix
+    Returns:
+        None (displays matrix as side effect)
+    """
+    from qiskit import Aer
+    from qiskit.visualization import array_to_latex
+    sim = Aer.get_backend('aer_simulator')
+    # Next, we'll create a copy of the circuit and work on
+    # that so we don't change anything as a side effect
+    qc = qc.copy()
+    # Tell the simulator to save the unitary matrix of this circuit
+    qc.save_unitary()
+    unitary = sim.run(qc).result().get_unitary()
+    display(array_to_latex(unitary, prefix=prefix))
+
+display_unitary(oracle, "U_\\text{oracle}=")
+
+# The diffuser
+diffuser = QuantumCircuit(2)
+diffuser.h([0, 1])
+diffuser.draw()
+
+diffuser.x([0,1])
+diffuser.draw()
+
+diffuser.cz(0,1)
+diffuser.x([0,1])
+diffuser.h([0,1])
+diffuser.draw()
+
+# Putting it together
+grover = QuantumCircuit(2)
+grover.h([0,1])  # initialise |s>
+grover = grover.compose(oracle)
+grover = grover.compose(diffuser)
+grover.measure_all()
+grover.draw()
+
+from qiskit import Aer
+sim = Aer.get_backend('aer_simulator')
+sim.run(grover).result().get_counts()
+# {'11': 1024}
+```

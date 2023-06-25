@@ -68,7 +68,14 @@ ket.draw(output="latex")
 
 
 # %%
-from hello_qiskit import run_puzzle
+with open("3sat.dimacs", "r", encoding="utf8") as f:
+    dimacs = f.read()
+print(dimacs)  # let's check the file is as promised
 
-puzzle = run_puzzle(0)
+# ! pip install tweedledum==1.1.0 qiskit
+from qiskit.circuit.library import PhaseOracle
+
+oracle = PhaseOracle.from_dimacs_file("3sat.dimacs")
+oracle.draw()
+
 # %%

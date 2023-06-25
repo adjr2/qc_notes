@@ -1,0 +1,1 @@
+## The repository contains the notes from the [Qiskit](https://learn.qiskit.org/course/). Each folder corresponds to different courses and contains notes in the README.md.
